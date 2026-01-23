@@ -8,24 +8,35 @@ import type {
   MonthlyGoals,
   ContentIdea,
 } from '../types';
+import { SEED_IDEAS } from './seedData';
 
 const STORAGE_KEY = 'brightway-thought-leadership';
+const SEEDED_KEY = 'brightway-seeded';
 
 const getInitialData = (): AppData => {
   try {
     const stored = localStorage.getItem(STORAGE_KEY);
     if (stored) {
-      return JSON.parse(stored);
+      const data = JSON.parse(stored);
+      // Check if we should seed ideas (first time or empty)
+      const hasSeeded = localStorage.getItem(SEEDED_KEY);
+      if (!hasSeeded && data.contentIdeas.length === 0) {
+        data.contentIdeas = SEED_IDEAS;
+        localStorage.setItem(SEEDED_KEY, 'true');
+      }
+      return data;
     }
   } catch (e) {
     console.error('Failed to load data from localStorage:', e);
   }
+  // First time - seed with ideas
+  localStorage.setItem(SEEDED_KEY, 'true');
   return {
     contentPieces: [],
     contentMetrics: [],
     weeklyPlans: [],
     monthlyGoals: [],
-    contentIdeas: [],
+    contentIdeas: SEED_IDEAS,
   };
 };
 
