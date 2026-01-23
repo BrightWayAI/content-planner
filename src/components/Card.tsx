@@ -1,12 +1,13 @@
-import type { ReactNode } from 'react';
+import type { ReactNode, MouseEvent } from 'react';
 
 interface CardProps {
   children: ReactNode;
   className?: string;
   padding?: 'none' | 'sm' | 'md' | 'lg';
+  onClick?: (e: MouseEvent<HTMLDivElement>) => void;
 }
 
-export function Card({ children, className = '', padding = 'md' }: CardProps) {
+export function Card({ children, className = '', padding = 'md', onClick }: CardProps) {
   const paddingClasses = {
     none: '',
     sm: 'p-3',
@@ -15,7 +16,10 @@ export function Card({ children, className = '', padding = 'md' }: CardProps) {
   };
 
   return (
-    <div className={`bg-white rounded-lg border border-gray-200 shadow-sm ${paddingClasses[padding]} ${className}`}>
+    <div
+      className={`bg-white rounded-lg border border-gray-200 shadow-sm ${paddingClasses[padding]} ${className}`}
+      onClick={onClick}
+    >
       {children}
     </div>
   );

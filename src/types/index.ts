@@ -85,6 +85,9 @@ export interface ContentIdea {
   notes?: string;
   priority: 'high' | 'medium' | 'someday';
   createdAt: string;
+  sourceUrl?: string;
+  sourceName?: string;
+  sourceType?: 'article' | 'newsletter' | 'social' | 'research' | 'other';
 }
 
 export interface AppData {
