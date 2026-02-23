@@ -1,10 +1,11 @@
 import { NavLink, Outlet } from 'react-router-dom';
 import { useAppStore } from '@/store/StoreContext';
-import { Home, FileText, BarChart3, Settings, Loader2 } from 'lucide-react';
+import { Home, FileText, Calendar, BarChart3, Settings, Loader2 } from 'lucide-react';
 
 const navItems = [
   { to: '/', label: 'Home', icon: Home },
-  { to: '/posts', label: 'Posts', icon: FileText },
+  { to: '/drafts', label: 'Drafts', icon: FileText },
+  { to: '/schedule', label: 'Schedule', icon: Calendar },
   { to: '/analytics', label: 'Analytics', icon: BarChart3 },
   { to: '/settings', label: 'Settings', icon: Settings },
 ];

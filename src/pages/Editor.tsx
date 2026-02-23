@@ -170,7 +170,7 @@ export function Editor() {
   const handleDelete = async () => {
     if (id && confirm('Delete this post?')) {
       await deleteContentPiece(id);
-      navigate('/posts');
+      navigate('/drafts');
     }
   };
 
@@ -179,7 +179,7 @@ export function Editor() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <button onClick={() => navigate('/posts')} className="flex items-center gap-2 text-gray-600 hover:text-gray-900">
+        <button onClick={() => navigate('/drafts')} className="flex items-center gap-2 text-gray-600 hover:text-gray-900">
           <ArrowLeft className="w-4 h-4" /><span>Back to posts</span>
         </button>
         <div className="flex items-center gap-2">
