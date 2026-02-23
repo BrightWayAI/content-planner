@@ -1,290 +1,348 @@
 import { useState, useEffect, useCallback } from 'react';
-import { v4 as uuidv4 } from 'uuid';
+import { api } from '@/lib/api';
 import type {
-  AppData,
+  AppConfig,
+  ContentPillar,
+  Channel,
+  ContentType,
+  NewsSource,
+  VoiceProfile,
+  VoiceSample,
+  ContentIdea,
   ContentPiece,
   ContentMetrics,
-  WeeklyPlan,
-  MonthlyGoals,
-  ContentIdea,
-} from '../types';
-import { SEED_IDEAS } from './seedData';
+} from '@/types';
 
-const STORAGE_KEY = 'brightway-thought-leadership';
-const SEEDED_KEY = 'brightway-seeded';
-
-const getInitialData = (): AppData => {
-  try {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored) {
-      const data = JSON.parse(stored);
-      // Check if we should seed ideas (first time or empty)
-      const hasSeeded = localStorage.getItem(SEEDED_KEY);
-      if (!hasSeeded && data.contentIdeas.length === 0) {
-        data.contentIdeas = SEED_IDEAS;
-        localStorage.setItem(SEEDED_KEY, 'true');
-      }
-      return data;
-    }
-  } catch (e) {
-    console.error('Failed to load data from localStorage:', e);
-  }
-  // First time - seed with ideas
-  localStorage.setItem(SEEDED_KEY, 'true');
-  return {
-    contentPieces: [],
-    contentMetrics: [],
-    weeklyPlans: [],
-    monthlyGoals: [],
-    contentIdeas: SEED_IDEAS,
-  };
-};
+export interface StoreData {
+  config: AppConfig | null;
+  pillars: ContentPillar[];
+  channels: Channel[];
+  contentTypes: ContentType[];
+  sources: NewsSource[];
+  voiceProfile: VoiceProfile | null;
+  voiceSamples: VoiceSample[];
+  contentPieces: ContentPiece[];
+  contentIdeas: ContentIdea[];
+  contentMetrics: ContentMetrics[];
+  isLoading: boolean;
+  isConfigured: boolean;
+}
 
 export function useStore() {
-  const [data, setData] = useState<AppData>(getInitialData);
+  const [data, setData] = useState<StoreData>({
+    config: null,
+    pillars: [],
+    channels: [],
+    contentTypes: [],
+    sources: [],
+    voiceProfile: null,
+    voiceSamples: [],
+    contentPieces: [],
+    contentIdeas: [],
+    contentMetrics: [],
+    isLoading: true,
+    isConfigured: false,
+  });
 
+  // Initial data fetch
   useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-    } catch (e) {
-      console.error('Failed to save data to localStorage:', e);
+    async function load() {
+      try {
+        const [configResult, ideas, pieces, metrics, sourcesData, voiceData] = await Promise.all([
+          api.config.get(),
+          api.ideas.list(),
+          api.pieces.list(),
+          api.metrics.list(),
+          api.sources.list(),
+          api.voice.get(),
+        ]);
+
+        setData({
+          config: configResult.config,
+          pillars: configResult.pillars,
+          channels: configResult.channels,
+          contentTypes: configResult.contentTypes,
+          sources: sourcesData,
+          voiceProfile: voiceData.profile,
+          voiceSamples: voiceData.samples,
+          contentPieces: pieces,
+          contentIdeas: ideas,
+          contentMetrics: metrics,
+          isLoading: false,
+          isConfigured: !!configResult.config,
+        });
+      } catch (error) {
+        console.error('Failed to load data:', error);
+        setData(prev => ({ ...prev, isLoading: false }));
+      }
     }
-  }, [data]);
-
-  // Content Pieces
-  const addContentPiece = useCallback((piece: Omit<ContentPiece, 'id' | 'createdAt' | 'updatedAt'>) => {
-    const now = new Date().toISOString();
-    const newPiece: ContentPiece = {
-      ...piece,
-      id: uuidv4(),
-      createdAt: now,
-      updatedAt: now,
-    };
-    setData(prev => ({
-      ...prev,
-      contentPieces: [...prev.contentPieces, newPiece],
-    }));
-    return newPiece;
+    load();
   }, []);
 
-  const updateContentPiece = useCallback((id: string, updates: Partial<ContentPiece>) => {
+  // --- Config ---
+  const updateConfig = useCallback(async (updates: Partial<AppConfig>) => {
+    const updated = await api.config.update(updates);
+    setData(prev => ({ ...prev, config: updated }));
+    return updated;
+  }, []);
+
+  const refreshConfig = useCallback(async () => {
+    const result = await api.config.get();
     setData(prev => ({
       ...prev,
-      contentPieces: prev.contentPieces.map(piece =>
-        piece.id === id
-          ? { ...piece, ...updates, updatedAt: new Date().toISOString() }
-          : piece
-      ),
+      config: result.config,
+      pillars: result.pillars,
+      channels: result.channels,
+      contentTypes: result.contentTypes,
+      isConfigured: !!result.config,
     }));
   }, []);
 
-  const deleteContentPiece = useCallback((id: string) => {
+  // --- Pillars ---
+  const addPillar = useCallback(async (pillar: Partial<ContentPillar>) => {
+    const created = await api.pillars.create(pillar);
+    setData(prev => ({ ...prev, pillars: [...prev.pillars, created] }));
+    return created;
+  }, []);
+
+  const updatePillar = useCallback(async (id: string, updates: Partial<ContentPillar>) => {
+    const updated = await api.pillars.update(id, updates);
+    setData(prev => ({ ...prev, pillars: prev.pillars.map(p => p.id === id ? updated : p) }));
+    return updated;
+  }, []);
+
+  const deletePillar = useCallback(async (id: string) => {
+    await api.pillars.delete(id);
+    setData(prev => ({ ...prev, pillars: prev.pillars.filter(p => p.id !== id) }));
+  }, []);
+
+  // --- Channels ---
+  const addChannel = useCallback(async (channel: Partial<Channel>) => {
+    const created = await api.channels.create(channel);
+    setData(prev => ({ ...prev, channels: [...prev.channels, created] }));
+    return created;
+  }, []);
+
+  const updateChannel = useCallback(async (id: string, updates: Partial<Channel>) => {
+    const updated = await api.channels.update(id, updates);
+    setData(prev => ({ ...prev, channels: prev.channels.map(c => c.id === id ? updated : c) }));
+    return updated;
+  }, []);
+
+  const deleteChannel = useCallback(async (id: string) => {
+    await api.channels.delete(id);
+    setData(prev => ({ ...prev, channels: prev.channels.filter(c => c.id !== id) }));
+  }, []);
+
+  // --- Content Types ---
+  const addContentType = useCallback(async (ct: Partial<ContentType>) => {
+    const created = await api.contentTypes.create(ct);
+    setData(prev => ({ ...prev, contentTypes: [...prev.contentTypes, created] }));
+    return created;
+  }, []);
+
+  const updateContentType = useCallback(async (id: string, updates: Partial<ContentType>) => {
+    const updated = await api.contentTypes.update(id, updates);
+    setData(prev => ({ ...prev, contentTypes: prev.contentTypes.map(ct => ct.id === id ? updated : ct) }));
+    return updated;
+  }, []);
+
+  const deleteContentType = useCallback(async (id: string) => {
+    await api.contentTypes.delete(id);
+    setData(prev => ({ ...prev, contentTypes: prev.contentTypes.filter(ct => ct.id !== id) }));
+  }, []);
+
+  // --- Sources ---
+  const addSource = useCallback(async (source: Partial<NewsSource>) => {
+    const created = await api.sources.create(source);
+    setData(prev => ({ ...prev, sources: [...prev.sources, created] }));
+    return created;
+  }, []);
+
+  const updateSource = useCallback(async (id: string, updates: Partial<NewsSource>) => {
+    const updated = await api.sources.update(id, updates);
+    setData(prev => ({ ...prev, sources: prev.sources.map(s => s.id === id ? updated : s) }));
+    return updated;
+  }, []);
+
+  const deleteSource = useCallback(async (id: string) => {
+    await api.sources.delete(id);
+    setData(prev => ({ ...prev, sources: prev.sources.filter(s => s.id !== id) }));
+  }, []);
+
+  // --- Voice ---
+  const updateVoiceProfile = useCallback(async (updates: Partial<VoiceProfile>) => {
+    const updated = await api.voice.update(updates);
+    setData(prev => ({ ...prev, voiceProfile: updated }));
+    return updated;
+  }, []);
+
+  const addVoiceSample = useCallback(async (sample: { title: string; content: string; sourceType: string }) => {
+    const created = await api.voice.addSample(sample);
+    setData(prev => ({ ...prev, voiceSamples: [...prev.voiceSamples, created] }));
+    return created;
+  }, []);
+
+  const addVoiceSampleFromUrl = useCallback(async (url: string, title?: string) => {
+    const created = await api.voice.addSampleFromUrl({ url, title });
+    setData(prev => ({ ...prev, voiceSamples: [...prev.voiceSamples, created] }));
+    return created;
+  }, []);
+
+  const deleteVoiceSample = useCallback(async (id: string) => {
+    await api.voice.deleteSample(id);
+    setData(prev => ({ ...prev, voiceSamples: prev.voiceSamples.filter(s => s.id !== id) }));
+  }, []);
+
+  const analyzeVoice = useCallback(async () => {
+    const result = await api.voice.analyze();
     setData(prev => ({
       ...prev,
-      contentPieces: prev.contentPieces.filter(piece => piece.id !== id),
+      voiceProfile: prev.voiceProfile
+        ? { ...prev.voiceProfile, analyzedVoiceSummary: result.summary }
+        : null,
+    }));
+    return result.summary;
+  }, []);
+
+  // --- Content Ideas ---
+  const addContentIdea = useCallback(async (idea: Partial<ContentIdea>) => {
+    const created = await api.ideas.create(idea);
+    setData(prev => ({ ...prev, contentIdeas: [created, ...prev.contentIdeas] }));
+    return created;
+  }, []);
+
+  const batchAddIdeas = useCallback(async (ideas: Partial<ContentIdea>[]) => {
+    const created = await api.ideas.batchCreate(ideas);
+    setData(prev => ({ ...prev, contentIdeas: [...created, ...prev.contentIdeas] }));
+    return created;
+  }, []);
+
+  const updateContentIdea = useCallback(async (id: string, updates: Partial<ContentIdea>) => {
+    const updated = await api.ideas.update(id, updates);
+    setData(prev => ({ ...prev, contentIdeas: prev.contentIdeas.map(i => i.id === id ? updated : i) }));
+    return updated;
+  }, []);
+
+  const deleteContentIdea = useCallback(async (id: string) => {
+    await api.ideas.delete(id);
+    setData(prev => ({ ...prev, contentIdeas: prev.contentIdeas.filter(i => i.id !== id) }));
+  }, []);
+
+  const promoteIdeaToContent = useCallback(async (ideaId: string, channelId?: string) => {
+    const piece = await api.ideas.promote(ideaId, channelId);
+    setData(prev => ({
+      ...prev,
+      contentIdeas: prev.contentIdeas.filter(i => i.id !== ideaId),
+      contentPieces: [piece, ...prev.contentPieces],
+    }));
+    return piece;
+  }, []);
+
+  // --- Content Pieces ---
+  const addContentPiece = useCallback(async (piece: Partial<ContentPiece>) => {
+    const created = await api.pieces.create(piece);
+    setData(prev => ({ ...prev, contentPieces: [created, ...prev.contentPieces] }));
+    return created;
+  }, []);
+
+  const updateContentPiece = useCallback(async (id: string, updates: Partial<ContentPiece>) => {
+    const updated = await api.pieces.update(id, updates);
+    setData(prev => ({ ...prev, contentPieces: prev.contentPieces.map(p => p.id === id ? updated : p) }));
+    return updated;
+  }, []);
+
+  const deleteContentPiece = useCallback(async (id: string) => {
+    await api.pieces.delete(id);
+    setData(prev => ({
+      ...prev,
+      contentPieces: prev.contentPieces.filter(p => p.id !== id),
       contentMetrics: prev.contentMetrics.filter(m => m.contentPieceId !== id),
     }));
   }, []);
 
   const getContentPiece = useCallback((id: string) => {
-    return data.contentPieces.find(piece => piece.id === id);
+    return data.contentPieces.find(p => p.id === id);
   }, [data.contentPieces]);
 
-  // Content Metrics
-  const addContentMetrics = useCallback((metrics: Omit<ContentMetrics, 'id' | 'recordedAt'>) => {
-    const newMetrics: ContentMetrics = {
-      ...metrics,
-      id: uuidv4(),
-      recordedAt: new Date().toISOString(),
-    };
-    setData(prev => ({
-      ...prev,
-      contentMetrics: [...prev.contentMetrics, newMetrics],
-    }));
-    return newMetrics;
+  // --- Metrics ---
+  const addContentMetrics = useCallback(async (metrics: Partial<ContentMetrics>) => {
+    const created = await api.metrics.create(metrics);
+    setData(prev => ({ ...prev, contentMetrics: [created, ...prev.contentMetrics] }));
+    return created;
   }, []);
 
-  const updateContentMetrics = useCallback((id: string, updates: Partial<ContentMetrics>) => {
-    setData(prev => ({
-      ...prev,
-      contentMetrics: prev.contentMetrics.map(m =>
-        m.id === id ? { ...m, ...updates } : m
-      ),
-    }));
+  const updateContentMetrics = useCallback(async (id: string, updates: Partial<ContentMetrics>) => {
+    const updated = await api.metrics.update(id, updates);
+    setData(prev => ({ ...prev, contentMetrics: prev.contentMetrics.map(m => m.id === id ? updated : m) }));
+    return updated;
   }, []);
 
   const getMetricsForContent = useCallback((contentPieceId: string) => {
     return data.contentMetrics.filter(m => m.contentPieceId === contentPieceId);
   }, [data.contentMetrics]);
 
-  // Weekly Plans
-  const addWeeklyPlan = useCallback((plan: Omit<WeeklyPlan, 'id'>) => {
-    const newPlan: WeeklyPlan = {
-      ...plan,
-      id: uuidv4(),
-    };
-    setData(prev => ({
-      ...prev,
-      weeklyPlans: [...prev.weeklyPlans, newPlan],
-    }));
-    return newPlan;
-  }, []);
+  // --- Helpers ---
+  const getPillarById = useCallback((id: string | null) => {
+    if (!id) return null;
+    return data.pillars.find(p => p.id === id) || null;
+  }, [data.pillars]);
 
-  const updateWeeklyPlan = useCallback((id: string, updates: Partial<WeeklyPlan>) => {
-    setData(prev => ({
-      ...prev,
-      weeklyPlans: prev.weeklyPlans.map(plan =>
-        plan.id === id ? { ...plan, ...updates } : plan
-      ),
-    }));
-  }, []);
+  const getChannelById = useCallback((id: string | null) => {
+    if (!id) return null;
+    return data.channels.find(c => c.id === id) || null;
+  }, [data.channels]);
 
-  const getWeeklyPlan = useCallback((weekStartDate: string) => {
-    return data.weeklyPlans.find(plan => plan.weekStartDate === weekStartDate);
-  }, [data.weeklyPlans]);
-
-  // Monthly Goals
-  const addMonthlyGoals = useCallback((goals: Omit<MonthlyGoals, 'id'>) => {
-    const newGoals: MonthlyGoals = {
-      ...goals,
-      id: uuidv4(),
-    };
-    setData(prev => ({
-      ...prev,
-      monthlyGoals: [...prev.monthlyGoals, newGoals],
-    }));
-    return newGoals;
-  }, []);
-
-  const updateMonthlyGoals = useCallback((id: string, updates: Partial<MonthlyGoals>) => {
-    setData(prev => ({
-      ...prev,
-      monthlyGoals: prev.monthlyGoals.map(g =>
-        g.id === id ? { ...g, ...updates } : g
-      ),
-    }));
-  }, []);
-
-  const getMonthlyGoals = useCallback((month: number, year: number) => {
-    return data.monthlyGoals.find(g => g.month === month && g.year === year);
-  }, [data.monthlyGoals]);
-
-  // Content Ideas
-  const addContentIdea = useCallback((idea: Omit<ContentIdea, 'id' | 'createdAt'>) => {
-    const newIdea: ContentIdea = {
-      ...idea,
-      id: uuidv4(),
-      createdAt: new Date().toISOString(),
-    };
-    setData(prev => ({
-      ...prev,
-      contentIdeas: [...prev.contentIdeas, newIdea],
-    }));
-    return newIdea;
-  }, []);
-
-  const updateContentIdea = useCallback((id: string, updates: Partial<ContentIdea>) => {
-    setData(prev => ({
-      ...prev,
-      contentIdeas: prev.contentIdeas.map(idea =>
-        idea.id === id ? { ...idea, ...updates } : idea
-      ),
-    }));
-  }, []);
-
-  const deleteContentIdea = useCallback((id: string) => {
-    setData(prev => ({
-      ...prev,
-      contentIdeas: prev.contentIdeas.filter(idea => idea.id !== id),
-    }));
-  }, []);
-
-  const promoteIdeaToContent = useCallback((ideaId: string) => {
-    const idea = data.contentIdeas.find(i => i.id === ideaId);
-    if (!idea) return null;
-
-    const piece = addContentPiece({
-      title: idea.title,
-      status: 'idea',
-      channel: 'personal_linkedin',
-      contentType: 'short_post',
-      pillar: idea.pillar,
-      body: idea.notes || '',
-    });
-
-    deleteContentIdea(ideaId);
-    return piece;
-  }, [data.contentIdeas, addContentPiece, deleteContentIdea]);
-
-  // Export/Import
-  const exportData = useCallback(() => {
-    const json = JSON.stringify(data, null, 2);
-    const blob = new Blob([json], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `brightway-thought-leadership-${new Date().toISOString().split('T')[0]}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-  }, [data]);
-
-  const importData = useCallback((jsonString: string) => {
-    try {
-      const imported = JSON.parse(jsonString) as AppData;
-      if (
-        !imported.contentPieces ||
-        !imported.contentMetrics ||
-        !imported.weeklyPlans ||
-        !imported.monthlyGoals ||
-        !imported.contentIdeas
-      ) {
-        throw new Error('Invalid data format');
-      }
-      setData(imported);
-      return true;
-    } catch (e) {
-      console.error('Failed to import data:', e);
-      return false;
-    }
-  }, []);
-
-  const clearAllData = useCallback(() => {
-    setData({
-      contentPieces: [],
-      contentMetrics: [],
-      weeklyPlans: [],
-      monthlyGoals: [],
-      contentIdeas: [],
-    });
-  }, []);
+  const getContentTypeById = useCallback((id: string | null) => {
+    if (!id) return null;
+    return data.contentTypes.find(ct => ct.id === id) || null;
+  }, [data.contentTypes]);
 
   return {
     data,
+    // Config
+    updateConfig,
+    refreshConfig,
+    // Pillars
+    addPillar,
+    updatePillar,
+    deletePillar,
+    // Channels
+    addChannel,
+    updateChannel,
+    deleteChannel,
+    // Content Types
+    addContentType,
+    updateContentType,
+    deleteContentType,
+    // Sources
+    addSource,
+    updateSource,
+    deleteSource,
+    // Voice
+    updateVoiceProfile,
+    addVoiceSample,
+    addVoiceSampleFromUrl,
+    deleteVoiceSample,
+    analyzeVoice,
+    // Content Ideas
+    addContentIdea,
+    batchAddIdeas,
+    updateContentIdea,
+    deleteContentIdea,
+    promoteIdeaToContent,
     // Content Pieces
     addContentPiece,
     updateContentPiece,
     deleteContentPiece,
     getContentPiece,
-    // Content Metrics
+    // Metrics
     addContentMetrics,
     updateContentMetrics,
     getMetricsForContent,
-    // Weekly Plans
-    addWeeklyPlan,
-    updateWeeklyPlan,
-    getWeeklyPlan,
-    // Monthly Goals
-    addMonthlyGoals,
-    updateMonthlyGoals,
-    getMonthlyGoals,
-    // Content Ideas
-    addContentIdea,
-    updateContentIdea,
-    deleteContentIdea,
-    promoteIdeaToContent,
-    // Export/Import
-    exportData,
-    importData,
-    clearAllData,
+    // Helpers
+    getPillarById,
+    getChannelById,
+    getContentTypeById,
   };
 }
